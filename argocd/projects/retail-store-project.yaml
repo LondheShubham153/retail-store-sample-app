@@ -7,7 +7,7 @@ spec:
   description: Retail Store Sample Application
   
   sourceRepos:
-    - 'https://github.com/LondheShubham153/retail-store-sample-app'
+    - 'https://github.com/rawatmeghaa/retail-store-sample-app.git'
   
   destinations:
     - namespace: retail-store
