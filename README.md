@@ -162,6 +162,8 @@ sudo sh get-docker.sh
 
 # Helm
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+chmod 700 get_helm.sh
+.get_helm.sh --version v3.18.4
 
 # Verify installations
 aws --version
