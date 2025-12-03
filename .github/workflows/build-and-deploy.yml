@@ -1,0 +1,92 @@
+name: Build and Deploy Microservices
+
+on:
+  push:
+    branches: [gitops]
+    paths: ['src/**'] 
+  
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-ui:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.modified, 'src/ui/') ||
+      contains(github.event.head_commit.added, 'src/ui/') ||
+      contains(github.event.head_commit.removed, 'src/ui/')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'corretto'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set ECR registry
+        run: echo "REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
+
+      - name: Build and push UI Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: src/ui
+          file: src/ui/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/retail-store-ui:${{ github.sha }}
+            ${{ env.REGISTRY }}/retail-store-ui:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install yq
+        uses: mikefarah/yq@master
+
+      - name: Update Helm values for UI service
+        run: |
+          yq eval '.image.tag = "${{ github.sha }}"' -i src/ui/chart/values.yaml
+          yq eval '.image.repository = "${{ env.REGISTRY }}/retail-store-ui"' -i src/ui/chart/values.yaml
+
+      - name: Verify Helm values changes
+        run: git diff src/ui/chart/values.yaml
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push Helm values changes
+        run: |
+          git add src/ui/chart/values.yaml
+          git commit -m "chore: update UI image to ${{ github.sha }}"
+          git push
