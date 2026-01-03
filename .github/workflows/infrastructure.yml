@@ -1,0 +1,140 @@
+name: Infrastructure Validation
+
+on:
+  pull_request:
+    branches: [gitops]
+    paths: ['terraform/**', 'argocd/**']
+  push:
+    branches: [gitops]
+    paths: ['terraform/**', 'argocd/**']
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+jobs:
+  terraform-validate:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.0"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Format Check
+        run: |
+          cd terraform
+          terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init -backend=false
+
+      - name: Terraform Validate
+        run: |
+          cd terraform
+          terraform validate
+
+      - name: Terraform Plan (Dry Run)
+        if: github.event_name == 'pull_request'
+        run: |
+          cd terraform
+          terraform init
+          terraform plan -no-color
+        continue-on-error: true
+
+  helm-validate:
+    name: Helm Chart Validation
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [ui, catalog, cart, checkout, orders]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.12.0'
+
+      - name: Helm Lint ${{ matrix.service }}
+        run: |
+          helm lint src/${{ matrix.service }}/chart/
+
+      - name: Helm Template Test ${{ matrix.service }}
+        run: |
+          helm template test-release src/${{ matrix.service }}/chart/ \
+            --set image.repository=test \
+            --set image.tag=test \
+            --dry-run
+
+  argocd-validate:
+    name: ArgoCD Application Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup ArgoCD CLI
+        run: |
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+
+      - name: Validate ArgoCD Applications
+        run: |
+          for app in argocd/applications/*.yaml; do
+            echo "🔍 Validating $app"
+            argocd app validate --file "$app" || echo "⚠️ Validation failed for $app"
+          done
+
+      - name: Validate ArgoCD Projects
+        run: |
+          for project in argocd/projects/*.yaml; do
+            echo "🔍 Validating $project"
+            # Basic YAML validation
+            python3 -c "import yaml; yaml.safe_load(open('$project'))" || echo "⚠️ YAML validation failed for $project"
+          done
+
+  security-scan-infrastructure:
+    name: Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Checkov on Terraform
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov-terraform.sarif
+
+      - name: Run Checkov on Kubernetes manifests
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: argocd/
+          framework: kubernetes
+          output_format: sarif
+          output_file_path: checkov-k8s.sarif
+
+      - name: Upload Checkov scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-terraform.sarif
+
+      - name: Upload Kubernetes scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-k8s.sarif

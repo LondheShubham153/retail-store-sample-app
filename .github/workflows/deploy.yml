@@ -5,9 +5,23 @@ on:
     branches: [gitops]
     paths: ['src/**']
   workflow_dispatch:
+    inputs:
+      services:
+        description: 'Services to deploy (comma-separated: ui,catalog,cart,checkout,orders or "all")'
+        required: false
+        default: 'all'
+      environment:
+        description: 'Target environment'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'production' }}
 
 jobs:
   detect-changes:
@@ -30,20 +44,34 @@ jobs:
           
           echo "🔍 Checking for changes in services..."
           
-          # Check for changes in each service
-          for service in "${SERVICES[@]}"; do
-            if git diff --name-only HEAD~1 HEAD | grep -q "^src/$service/" || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-              CHANGED_SERVICES+=("$service")
-              echo "✅ Changes detected in: $service"
-            else
-              echo "⏭️ No changes in: $service"
-            fi
-          done
-          
-          # If manual trigger, build all services
+          # Handle manual trigger with specific services
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "🔄 Manual trigger - building all services"
-            CHANGED_SERVICES=("ui" "catalog" "cart" "checkout" "orders")
+            MANUAL_SERVICES="${{ github.event.inputs.services }}"
+            if [ "$MANUAL_SERVICES" == "all" ] || [ -z "$MANUAL_SERVICES" ]; then
+              echo "🔄 Manual trigger - building all services"
+              CHANGED_SERVICES=("ui" "catalog" "cart" "checkout" "orders")
+            else
+              echo "🔄 Manual trigger - building specified services: $MANUAL_SERVICES"
+              IFS=',' read -ra MANUAL_ARRAY <<< "$MANUAL_SERVICES"
+              for service in "${MANUAL_ARRAY[@]}"; do
+                service=$(echo "$service" | xargs) # trim whitespace
+                if [[ " ${SERVICES[@]} " =~ " ${service} " ]]; then
+                  CHANGED_SERVICES+=("$service")
+                else
+                  echo "⚠️ Invalid service: $service"
+                fi
+              done
+            fi
+          else
+            # Check for changes in each service
+            for service in "${SERVICES[@]}"; do
+              if git diff --name-only HEAD~1 HEAD | grep -q "^src/$service/"; then
+                CHANGED_SERVICES+=("$service")
+                echo "✅ Changes detected in: $service"
+              else
+                echo "⏭️ No changes in: $service"
+              fi
+            done
           fi
           
           # Check if we have any changes
@@ -69,6 +97,7 @@ jobs:
           
           echo "📊 Services to build: ${CHANGED_SERVICES[*]}"
           echo "📊 Generated matrix: {\"service\":$MATRIX_JSON}"
+          echo "🎯 Target environment: ${{ env.ENVIRONMENT }}"
 
   deploy:
     name: Deploy ${{ matrix.service }}

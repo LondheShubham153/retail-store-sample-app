@@ -1,5 +1,5 @@
 # AWS Containers Retail Sample - Checkout Service
-<!-- Test commit -->
+<!-- Test commit - GitOps Pipeline Build -->
 
 | Language | Persistence |
 | -------- | ----------- |

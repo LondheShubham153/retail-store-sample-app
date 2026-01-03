@@ -1,0 +1,221 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to rollback'
+        required: true
+        type: choice
+        options:
+        - ui
+        - catalog
+        - cart
+        - checkout
+        - orders
+        - all
+      commit_hash:
+        description: 'Target commit hash (7 characters) to rollback to'
+        required: true
+      environment:
+        description: 'Target environment'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+jobs:
+  rollback:
+    name: Rollback ${{ github.event.inputs.service }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Validate target commit
+        run: |
+          TARGET_COMMIT="${{ github.event.inputs.commit_hash }}"
+          if ! git cat-file -e "${TARGET_COMMIT}^{commit}" 2>/dev/null; then
+            echo "❌ Invalid commit hash: ${TARGET_COMMIT}"
+            exit 1
+          fi
+          
+          echo "✅ Target commit ${TARGET_COMMIT} is valid"
+          git log --oneline -1 "${TARGET_COMMIT}"
+
+      - name: Verify ECR images exist
+        run: |
+          SERVICE="${{ github.event.inputs.service }}"
+          TARGET_COMMIT="${{ github.event.inputs.commit_hash }}"
+          AWS_ACCOUNT_ID="${{ secrets.AWS_ACCOUNT_ID }}"
+          
+          if [ "$SERVICE" == "all" ]; then
+            SERVICES=("ui" "catalog" "cart" "checkout" "orders")
+          else
+            SERVICES=("$SERVICE")
+          fi
+          
+          for svc in "${SERVICES[@]}"; do
+            ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/retail-store-${svc}"
+            
+            echo "🔍 Checking if image exists: ${ECR_REPO}:${TARGET_COMMIT}"
+            
+            if aws ecr describe-images \
+                --repository-name "retail-store-${svc}" \
+                --image-ids imageTag="${TARGET_COMMIT}" \
+                --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+              echo "✅ Image found: ${ECR_REPO}:${TARGET_COMMIT}"
+            else
+              echo "❌ Image not found: ${ECR_REPO}:${TARGET_COMMIT}"
+              echo "Available tags for retail-store-${svc}:"
+              aws ecr describe-images \
+                --repository-name "retail-store-${svc}" \
+                --query 'imageDetails[*].imageTags[0]' \
+                --output table \
+                --region ${{ env.AWS_REGION }} || echo "No images found"
+              exit 1
+            fi
+          done
+
+      - name: Update Helm values for rollback
+        run: |
+          SERVICE="${{ github.event.inputs.service }}"
+          TARGET_COMMIT="${{ github.event.inputs.commit_hash }}"
+          AWS_ACCOUNT_ID="${{ secrets.AWS_ACCOUNT_ID }}"
+          
+          if [ "$SERVICE" == "all" ]; then
+            SERVICES=("ui" "catalog" "cart" "checkout" "orders")
+          else
+            SERVICES=("$SERVICE")
+          fi
+          
+          for svc in "${SERVICES[@]}"; do
+            ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/retail-store-${svc}"
+            VALUES_FILE="src/${svc}/chart/values.yaml"
+            
+            echo "🔄 Rolling back ${svc} to ${TARGET_COMMIT}"
+            echo "   Repository: ${ECR_REPO}"
+            echo "   File: ${VALUES_FILE}"
+            
+            # Validate file exists
+            if [[ ! -f "${VALUES_FILE}" ]]; then
+              echo "❌ Values file not found: ${VALUES_FILE}"
+              exit 1
+            fi
+            
+            # Show before state
+            echo "📋 Before rollback (${svc}):"
+            grep -A3 "^image:" "${VALUES_FILE}" | head -4 || echo "No main image section found"
+            
+            # Create a backup
+            cp "${VALUES_FILE}" "${VALUES_FILE}.backup"
+            
+            # Update to target commit
+            awk -v repo="${ECR_REPO}" -v tag="${TARGET_COMMIT}" '
+            BEGIN { in_main_image = 0; updated_repo = 0; updated_tag = 0 }
+            /^image:/ { in_main_image = 1; print; next }
+            in_main_image && /^[[:space:]]*repository:/ && !updated_repo { 
+              print "  repository: " repo; updated_repo = 1; next 
+            }
+            in_main_image && /^[[:space:]]*tag:/ && !updated_tag { 
+              print "  tag: \"" tag "\""; updated_tag = 1; next 
+            }
+            /^[a-zA-Z]/ && !/^image:/ { in_main_image = 0 }
+            { print }
+            ' "${VALUES_FILE}.backup" > "${VALUES_FILE}"
+            
+            # Validate the update worked
+            if grep -q "${ECR_REPO}" "${VALUES_FILE}" && grep -q "\"${TARGET_COMMIT}\"" "${VALUES_FILE}"; then
+              echo "✅ Successfully rolled back ${VALUES_FILE}"
+              echo "📋 After rollback (${svc}):"
+              grep -A3 "^image:" "${VALUES_FILE}" | head -4
+            else
+              echo "❌ Rollback failed - restoring backup"
+              mv "${VALUES_FILE}.backup" "${VALUES_FILE}"
+              exit 1
+            fi
+            
+            # Remove backup
+            rm "${VALUES_FILE}.backup"
+          done
+
+      - name: Commit rollback changes
+        run: |
+          SERVICE="${{ github.event.inputs.service }}"
+          TARGET_COMMIT="${{ github.event.inputs.commit_hash }}"
+          
+          git config --local user.email "gitops@github.com"
+          git config --local user.name "GitOps Bot"
+          
+          if [ "$SERVICE" == "all" ]; then
+            SERVICES=("ui" "catalog" "cart" "checkout" "orders")
+            COMMIT_MSG="🔄 ROLLBACK: All services to ${TARGET_COMMIT}"
+          else
+            SERVICES=("$SERVICE")
+            COMMIT_MSG="🔄 ROLLBACK: ${SERVICE} to ${TARGET_COMMIT}"
+          fi
+          
+          # Add all changed values files
+          for svc in "${SERVICES[@]}"; do
+            git add "src/${svc}/chart/values.yaml"
+          done
+          
+          if ! git diff --cached --quiet; then
+            git commit -m "${COMMIT_MSG} - Environment: ${{ github.event.inputs.environment }} - Triggered by: ${{ github.actor }}"
+            
+            # Push with retry logic
+            for i in {1..3}; do
+              if git push origin gitops; then
+                echo "✅ Successfully pushed rollback changes"
+                break
+              else
+                echo "⚠️ Push failed, attempt $i/3. Retrying..."
+                git pull --rebase origin gitops
+                sleep 2
+              fi
+              
+              if [ $i -eq 3 ]; then
+                echo "❌ Failed to push rollback after 3 attempts"
+                exit 1
+              fi
+            done
+          else
+            echo "📝 No changes to commit for rollback"
+          fi
+
+      - name: Create rollback summary
+        run: |
+          echo "## 🔄 Rollback Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Service(s):** ${{ github.event.inputs.service }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Target Commit:** ${{ github.event.inputs.commit_hash }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Status:** Rollback completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Actions completed:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔍 Verified target commit exists" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐳 Verified ECR images exist" >> $GITHUB_STEP_SUMMARY
+          echo "- 📝 Updated Helm chart values" >> $GITHUB_STEP_SUMMARY
+          echo "- 💾 Committed rollback changes" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 ArgoCD will sync automatically" >> $GITHUB_STEP_SUMMARY

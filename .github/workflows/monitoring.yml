@@ -1,0 +1,192 @@
+name: Monitoring & Health Checks
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to check'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+jobs:
+  health-check:
+    name: Application Health Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: '1.33.0'
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name retail-store
+
+      - name: Check ArgoCD Applications
+        run: |
+          echo "🔍 Checking ArgoCD application status..."
+          
+          APPS=("retail-store-ui" "retail-store-catalog" "retail-store-cart" "retail-store-checkout" "retail-store-orders")
+          FAILED_APPS=()
+          
+          for app in "${APPS[@]}"; do
+            STATUS=$(kubectl get application "$app" -n argocd -o jsonpath='{.status.health.status}' 2>/dev/null || echo "NotFound")
+            SYNC_STATUS=$(kubectl get application "$app" -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
+            
+            echo "📊 $app: Health=$STATUS, Sync=$SYNC_STATUS"
+            
+            if [ "$STATUS" != "Healthy" ] || [ "$SYNC_STATUS" != "Synced" ]; then
+              FAILED_APPS+=("$app")
+            fi
+          done
+          
+          if [ ${#FAILED_APPS[@]} -gt 0 ]; then
+            echo "❌ Unhealthy applications: ${FAILED_APPS[*]}"
+            echo "HEALTH_STATUS=FAILED" >> $GITHUB_ENV
+            echo "FAILED_APPS=${FAILED_APPS[*]}" >> $GITHUB_ENV
+          else
+            echo "✅ All applications are healthy"
+            echo "HEALTH_STATUS=HEALTHY" >> $GITHUB_ENV
+          fi
+
+      - name: Check Pod Status
+        run: |
+          echo "🔍 Checking pod status..."
+          
+          SERVICES=("ui" "catalog" "cart" "checkout" "orders")
+          FAILED_PODS=()
+          
+          for service in "${SERVICES[@]}"; do
+            READY_PODS=$(kubectl get pods -l app.kubernetes.io/name="$service" -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -o "True" | wc -l)
+            TOTAL_PODS=$(kubectl get pods -l app.kubernetes.io/name="$service" --no-headers | wc -l)
+            
+            echo "📊 $service: $READY_PODS/$TOTAL_PODS pods ready"
+            
+            if [ "$READY_PODS" -eq 0 ] || [ "$READY_PODS" -lt "$TOTAL_PODS" ]; then
+              FAILED_PODS+=("$service")
+              
+              # Get pod details for failed service
+              echo "🔍 Pod details for $service:"
+              kubectl get pods -l app.kubernetes.io/name="$service" -o wide
+              
+              # Get recent events
+              echo "📋 Recent events for $service:"
+              kubectl get events --field-selector involvedObject.kind=Pod --sort-by='.lastTimestamp' | grep "$service" | tail -5
+            fi
+          done
+          
+          if [ ${#FAILED_PODS[@]} -gt 0 ]; then
+            echo "❌ Services with pod issues: ${FAILED_PODS[*]}"
+            echo "POD_STATUS=FAILED" >> $GITHUB_ENV
+            echo "FAILED_PODS=${FAILED_PODS[*]}" >> $GITHUB_ENV
+          else
+            echo "✅ All pods are ready"
+            echo "POD_STATUS=HEALTHY" >> $GITHUB_ENV
+          fi
+
+      - name: Check Service Endpoints
+        run: |
+          echo "🔍 Checking service endpoints..."
+          
+          # Get the load balancer URL
+          LB_URL=$(kubectl get service retail-store-ui -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+          
+          if [ -z "$LB_URL" ]; then
+            echo "⚠️ Load balancer URL not found, checking service status..."
+            kubectl get service retail-store-ui -o wide
+            echo "ENDPOINT_STATUS=NO_LB" >> $GITHUB_ENV
+          else
+            echo "🌐 Testing endpoint: http://$LB_URL"
+            
+            # Test main UI endpoint
+            if curl -f -s --max-time 30 "http://$LB_URL" > /dev/null; then
+              echo "✅ UI endpoint is responding"
+              echo "ENDPOINT_STATUS=HEALTHY" >> $GITHUB_ENV
+            else
+              echo "❌ UI endpoint is not responding"
+              echo "ENDPOINT_STATUS=FAILED" >> $GITHUB_ENV
+            fi
+            
+            echo "LB_URL=$LB_URL" >> $GITHUB_ENV
+          fi
+
+      - name: Generate Health Report
+        run: |
+          echo "## 🏥 Health Check Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ github.event.inputs.environment || 'production' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # ArgoCD Applications
+          echo "### 🔄 ArgoCD Applications" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ env.HEALTH_STATUS }}" == "HEALTHY" ]; then
+            echo "✅ **Status:** All applications healthy and synced" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Status:** Issues detected" >> $GITHUB_STEP_SUMMARY
+            echo "**Failed Applications:** ${{ env.FAILED_APPS }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Pod Status
+          echo "### 🐳 Pod Status" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ env.POD_STATUS }}" == "HEALTHY" ]; then
+            echo "✅ **Status:** All pods ready" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Status:** Pod issues detected" >> $GITHUB_STEP_SUMMARY
+            echo "**Services with Issues:** ${{ env.FAILED_PODS }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Endpoint Status
+          echo "### 🌐 Endpoint Status" >> $GITHUB_STEP_SUMMARY
+          case "${{ env.ENDPOINT_STATUS }}" in
+            "HEALTHY")
+              echo "✅ **Status:** Endpoint responding" >> $GITHUB_STEP_SUMMARY
+              echo "**URL:** http://${{ env.LB_URL }}" >> $GITHUB_STEP_SUMMARY
+              ;;
+            "FAILED")
+              echo "❌ **Status:** Endpoint not responding" >> $GITHUB_STEP_SUMMARY
+              echo "**URL:** http://${{ env.LB_URL }}" >> $GITHUB_STEP_SUMMARY
+              ;;
+            "NO_LB")
+              echo "⚠️ **Status:** Load balancer not ready" >> $GITHUB_STEP_SUMMARY
+              ;;
+          esac
+
+      - name: Send Slack notification on failure
+        if: env.HEALTH_STATUS == 'FAILED' || env.POD_STATUS == 'FAILED' || env.ENDPOINT_STATUS == 'FAILED'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: |
+            🚨 Health check failed for retail store application
+            
+            ArgoCD: ${{ env.HEALTH_STATUS }}
+            Pods: ${{ env.POD_STATUS }}
+            Endpoint: ${{ env.ENDPOINT_STATUS }}
+            
+            Failed Apps: ${{ env.FAILED_APPS }}
+            Failed Pods: ${{ env.FAILED_PODS }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true

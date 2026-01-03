@@ -1,0 +1,133 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+jobs:
+  update-java-dependencies:
+    name: Update Java Dependencies
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [ui, cart, orders]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'corretto'
+          java-version: '21'
+
+      - name: Update Maven dependencies for ${{ matrix.service }}
+        run: |
+          cd src/${{ matrix.service }}
+          ./mvnw versions:use-latest-versions -DallowSnapshots=false
+          ./mvnw versions:update-properties
+
+      - name: Test updated dependencies
+        run: |
+          cd src/${{ matrix.service }}
+          ./mvnw clean test
+
+      - name: Create PR for ${{ matrix.service }} updates
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "⬆️ Update ${{ matrix.service }} dependencies"
+          title: "⬆️ Update ${{ matrix.service }} Java dependencies"
+          body: |
+            Automated dependency update for ${{ matrix.service }} service.
+            
+            - Updated Maven dependencies to latest versions
+            - Tests passing ✅
+            
+            Please review and merge if appropriate.
+          branch: dependency-updates/${{ matrix.service }}-java
+          delete-branch: true
+
+  update-go-dependencies:
+    name: Update Go Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Update Go dependencies for catalog
+        run: |
+          cd src/catalog
+          go get -u ./...
+          go mod tidy
+
+      - name: Test updated dependencies
+        run: |
+          cd src/catalog
+          go test ./...
+
+      - name: Create PR for Go updates
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "⬆️ Update catalog Go dependencies"
+          title: "⬆️ Update catalog Go dependencies"
+          body: |
+            Automated dependency update for catalog service.
+            
+            - Updated Go modules to latest versions
+            - Tests passing ✅
+            
+            Please review and merge if appropriate.
+          branch: dependency-updates/catalog-go
+          delete-branch: true
+
+  update-node-dependencies:
+    name: Update Node.js Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Update Node.js dependencies for checkout
+        run: |
+          cd src/checkout
+          npm update
+          npm audit fix --force || true
+
+      - name: Test updated dependencies
+        run: |
+          cd src/checkout
+          npm test
+
+      - name: Create PR for Node.js updates
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "⬆️ Update checkout Node.js dependencies"
+          title: "⬆️ Update checkout Node.js dependencies"
+          body: |
+            Automated dependency update for checkout service.
+            
+            - Updated NPM packages to latest versions
+            - Fixed security vulnerabilities
+            - Tests passing ✅
+            
+            Please review and merge if appropriate.
+          branch: dependency-updates/checkout-nodejs
+          delete-branch: true

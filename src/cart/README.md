@@ -1,6 +1,6 @@
 # AWS Containers Retail Sample - Cart Service
 
-<!-- Test commit -->
+<!-- Test commit - GitOps Pipeline Build -->
 
 | Language | Persistence     |
 | -------- | --------------- |

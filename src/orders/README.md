@@ -1,10 +1,8 @@
 # AWS Containers Retail Sample - Orders Service
 
-<!-- Test commit -->
+<!-- Test commit - GitOps Pipeline Build -->
 
 | Language | Persistence |
-| -------- | ----------- |
-| Java     | MySQL       |
 | -------- | ----------- |
 | Java     | MySQL       |
 
