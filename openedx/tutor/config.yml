@@ -1,0 +1,33 @@
+# Tutor configuration for Kubernetes deployment
+# Reference: https://docs.tutor.overhang.io/
+
+# Platform
+OPENEDX_COMMON_VERSION: "latest"
+
+# External databases
+MYSQL_HOST: "mysql.example.com"
+MYSQL_PORT: 3306
+MYSQL_USER: "openedx"
+MYSQL_PASSWORD: "CHANGEME"
+MYSQL_DATABASE: "openedx"
+
+MONGODB_URI: "mongodb://openedx:CHANGEME@mongo.example.com:27017/openedx?authSource=admin"
+
+ELASTICSEARCH_HOST: "https://search.example.com"
+ELASTICSEARCH_USER: "openedx"
+ELASTICSEARCH_PASSWORD: "CHANGEME"
+
+REDIS_HOST: "redis.example.com"
+REDIS_PORT: 6379
+REDIS_PASSWORD: "CHANGEME"
+
+# CDN and static assets
+STATIC_URL: "https://cdn.example.com/static/"
+MEDIA_URL: "https://cdn.example.com/media/"
+
+# Object storage for uploads
+S3_STORAGE_BUCKET: "openedx-media"
+S3_STORAGE_REGION: "us-east-1"
+
+# Nginx as the ingress web server
+ENABLE_HTTPS: true
