@@ -1,0 +1,11 @@
+controller:
+  service:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+  config:
+    use-http2: "true"
+    ssl-protocols: "TLSv1.2 TLSv1.3"
+    enable-real-ip: "true"
+    proxy-buffer-size: "16k"
+  admissionWebhooks:
+    enabled: true
