@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openedx
+  labels:
+    app.kubernetes.io/name: openedx
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openedx-observability
+  labels:
+    app.kubernetes.io/name: openedx-observability
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx

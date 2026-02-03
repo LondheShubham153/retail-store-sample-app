@@ -1,0 +1,8 @@
+# External Database Connection Reference
+
+Populate Kubernetes secrets or Tutor config with the following keys:
+
+* MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+* MONGO_URI
+* ELASTICSEARCH_HOST, ELASTICSEARCH_USER, ELASTICSEARCH_PASSWORD
+* REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
