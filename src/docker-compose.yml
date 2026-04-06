@@ -1,0 +1,67 @@
+#docker composer file updated
+services:
+
+  catalog:
+    image: catalog-service
+    container_name: catalog
+    ports:
+      - "8086:8080"
+    networks:
+      - app-network
+
+  cart:
+    image: cart-service
+    container_name: cart
+    ports:
+      - "8082:8080"
+    depends_on:
+      - catalog
+    environment:
+      - CATALOG_SERVICE_HOST=catalog
+    networks:
+      - app-network
+
+  orders:
+    image: orders-service
+    container_name: orders
+    ports:
+      - "8083:8080"
+    networks:
+      - app-network
+
+  checkout:
+    image: checkout-service
+    container_name: checkout
+    ports:
+      - "8084:8080"
+    depends_on:
+      - cart
+      - orders
+    environment:
+      - CART_SERVICE_HOST=cart
+      - ORDERS_SERVICE_HOST=orders
+    networks:
+      - app-network
+
+  ui:
+    image: ui-service
+    container_name: ui
+    ports:
+      - "8085:8080"
+    depends_on:
+      - catalog
+      - cart
+      - orders
+      - checkout
+    environment:
+      - CATALOG_SERVICE_HOST=catalog
+      - CART_SERVICE_HOST=cart
+      - ORDERS_SERVICE_HOST=orders
+      - CHECKOUT_SERVICE_HOST=checkout
+    networks:
+      - app-network
+
+# 👇 custom network
+networks:
+  app-network:
+    driver: bridge

@@ -1,40 +1,73 @@
-FROM node:20-alpine AS build
-WORKDIR /usr/src/app
-COPY --chown=node:node package*.json ./
-COPY --chown=node:node . .
-RUN yarn install --frozen-lockfile
-RUN yarn build
-USER node
+# # ---- Stage 1: Build ----
+# FROM node:20-alpine AS builder
 
+# WORKDIR /app
 
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023
+# # dependencies install
+# COPY package.json yarn.lock ./
+# RUN yarn install --frozen-lockfile
 
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
-RUN dnf --setopt=install_weak_deps=False install -q -y \
-    nodejs20 \
-    shadow-utils \
-    && \
-    dnf clean all
+# # source code copy
+# COPY . .
 
-RUN alternatives --install /usr/bin/node node /usr/bin/node-20 90
+# # build the app
+# RUN yarn build
 
-ENV APPUSER=appuser
-ENV APPUID=1000
-ENV APPGID=1000
+# # ---- Stage 2: Production ----
+# FROM node:20-alpine
 
-RUN useradd \
-    --home "/app" \
-    --create-home \
-    --user-group \
-    --uid "$APPUID" \
-    "$APPUSER"
+# WORKDIR /app
+
+# # only production deps
+# COPY package.json yarn.lock ./
+# RUN yarn install --frozen-lockfile --production
+
+# # copy built files from builder
+# COPY --from=builder /app/dist ./dist
+
+# # expose port (Nest default 3000)
+# EXPOSE 3000
+
+# # run app
+# CMD ["node", "dist/main"]
+
+# optimized dockerfile for better caching and smaller image size, using multi-stage builds and only copying necessary files to the final image
+# ---- Build Stage ----
+# ---- Build Stage ----
+# ---- Build Stage ----
+FROM node:20-alpine AS builder
 
 WORKDIR /app
-USER appuser
 
-COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
-COPY --chown=node:node --from=build /usr/src/app/dist ./dist
+# Install dependencies (including dev for build)
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
 
-ENTRYPOINT [ "node", "dist/main.js" ]
+# Copy source & build
+COPY . .
+RUN yarn build
+
+# ---- Production Stage ----
+FROM node:20-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Install ONLY production dependencies
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile --production=true \
+    && yarn cache clean
+
+# Copy built app
+COPY --from=builder /app/dist ./dist
+
+# Security: non-root user
+RUN addgroup -S app && adduser -S app -G app
+USER app
+
+# App port
+EXPOSE 3000
+
+# Start app
+CMD ["node", "dist/main"]

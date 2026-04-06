@@ -1,65 +1,38 @@
-# Build Stage
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023 as build-env
+# # Stage 1: Build
+# FROM maven:3.9.6-eclipse-temurin-17 AS builder
 
-# We tell DNF not to install Recommends and Suggests packages, keeping our
-# installed set of packages as minimal as possible.
-RUN dnf --setopt=install_weak_deps=False install -q -y \
-    maven \
-    java-21-amazon-corretto-headless \
-    which \
-    tar \
-    gzip \
-    && \
-    dnf clean all
+# WORKDIR /app
+# COPY pom.xml .
+# RUN mvn dependency:go-offline
 
-ARG JAR_PATH
+# COPY src ./src
+# RUN mvn clean package -DskipTests
 
-VOLUME /tmp
-WORKDIR /
+# # Stage 2: Run
+# FROM eclipse-temurin:17-jdk-alpine
 
-COPY .mvn .mvn
-COPY mvnw .
-COPY pom.xml .
+# WORKDIR /app
+# COPY --from=builder /app/target/*.jar app.jar
 
-RUN ./mvnw dependency:go-offline -B -q
+# EXPOSE 8080
+# ENTRYPOINT ["java","-jar","app.jar"]
 
-COPY ./src ./src
-
-RUN ./mvnw -DskipTests package -q && \
-    mv /target/carts-0.0.1-SNAPSHOT.jar /app.jar
-
-# Package Stage
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023
-
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
-RUN dnf --setopt=install_weak_deps=False install -q -y \
-    java-21-amazon-corretto-headless \
-    shadow-utils \
-    && \
-    dnf clean all
-
-ENV APPUSER=appuser
-ENV APPUID=1000
-ENV APPGID=1000
-
-RUN useradd \
-    --home "/app" \
-    --create-home \
-    --user-group \
-    --uid "$APPUID" \
-    "$APPUSER"
-
-ENV JAVA_TOOL_OPTIONS=
-ENV SPRING_PROFILES_ACTIVE=prod
+# updated to use Java 21 for better performance and security, and to align with the latest LTS version of Java
+# Stage 1: Build
+FROM maven:3.9.6-eclipse-temurin-21 AS builder
 
 WORKDIR /app
-USER appuser
+COPY pom.xml .
+RUN mvn dependency:go-offline
 
-COPY ./ATTRIBUTION.md ./LICENSES.md
-COPY --chown=appuser:appuser --from=build-env /app.jar .
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+# Stage 2: Run
+FROM eclipse-temurin:21-jdk-alpine
+
+WORKDIR /app
+COPY --from=builder /app/target/*.jar app.jar
 
 EXPOSE 8080
-
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
+ENTRYPOINT ["java","-jar","app.jar"]

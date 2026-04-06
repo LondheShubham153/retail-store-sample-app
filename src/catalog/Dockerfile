@@ -1,57 +1,44 @@
-# Build Stage
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build-env
+# FROM golang:1.23-alpine AS builder
 
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
-RUN dnf --setopt=install_weak_deps=False install -q -y \
-    git \
-    golang \
-    && \
-    dnf clean all
+# WORKDIR /app
 
-RUN mkdir -p "${GOPATH}/src" "${GOPATH}/bin" /appsrc
+# COPY go.mod go.sum ./
+# RUN go mod download
 
-WORKDIR /appsrc
+# COPY . .
 
-ENV GOPROXY=https://goproxy.io,direct
+# RUN go build -o app
+
+# FROM alpine:latest
+
+# WORKDIR /root/
+
+# COPY --from=builder /app/app .
+
+# CMD ["./app"]
+
+# Build stage
+# updated to use debian image for better compatibility with CGO and to avoid issues with musl libc in alpine
+FROM golang:1.23 AS builder
+
+WORKDIR /app
+
+# CGO enable
+ENV CGO_ENABLED=1
+
+RUN apt-get update && apt-get install -y gcc libc6-dev
 
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+RUN go build -o catalog
 
-RUN go build -o main main.go
+# Run stage
+FROM debian:bookworm-slim
 
-# Final stage
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023
+WORKDIR /root/
+COPY --from=builder /app/catalog .
 
-ENV APPUSER=appuser
-ENV APPUID=1000
-ENV APPGID=1000
-
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
-RUN dnf --setopt=install_weak_deps=False install -q -y \
-    shadow-utils \
-    && \
-    dnf clean all
-
-RUN useradd \
-    --home "/app" \
-    --create-home \
-    --user-group \
-    --uid "$APPUID" \
-    "$APPUSER"
-
-WORKDIR /app
-USER appuser
-
-COPY --chown=appuser:appuser --from=build-env /appsrc/main /app/
-
-COPY ./ATTRIBUTION.md ./LICENSES.md
-
-ENV GIN_MODE=release
-
-ENTRYPOINT ["/app/main"]
+EXPOSE 8080
+CMD ["./catalog"]
