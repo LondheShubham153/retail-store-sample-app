@@ -1,0 +1,50 @@
+Name:                     ingress-nginx-controller
+Namespace:                ingress-nginx
+Labels:                   app.kubernetes.io/component=controller
+                          app.kubernetes.io/instance=ingress-nginx
+                          app.kubernetes.io/managed-by=Helm
+                          app.kubernetes.io/name=ingress-nginx
+                          app.kubernetes.io/part-of=ingress-nginx
+                          app.kubernetes.io/version=1.12.1
+                          helm.sh/chart=ingress-nginx-4.12.1
+Annotations:              meta.helm.sh/release-name: ingress-nginx
+                          meta.helm.sh/release-namespace: ingress-nginx
+                          service.beta.kubernetes.io/aws-load-balancer-health-check-path: /healthz
+                          service.beta.kubernetes.io/aws-load-balancer-health-check-port: 10254
+                          service.beta.kubernetes.io/aws-load-balancer-health-check-protocol: HTTP
+                          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+                          service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+                          service.beta.kubernetes.io/aws-load-balancer-type: nlb
+Selector:                 app.kubernetes.io/component=controller,app.kubernetes.io/instance=ingress-nginx,app.kubernetes.io/name=ingress-nginx
+Type:                     LoadBalancer
+IP Family Policy:         SingleStack
+IP Families:              IPv4
+IP:                       172.20.125.185
+IPs:                      172.20.125.185
+Port:                     http  80/TCP
+TargetPort:               http/TCP
+NodePort:                 http  32562/TCP
+Endpoints:                10.0.11.193:80
+Port:                     https  443/TCP
+TargetPort:               https/TCP
+NodePort:                 https  32650/TCP
+Endpoints:                10.0.11.193:443
+Session Affinity:         None
+External Traffic Policy:  Local
+Internal Traffic Policy:  Cluster
+HealthCheck NodePort:     31270
+Events:
+  Type     Reason             Age                From     Message
+  ----     ------             ----               ----     -------
+  Warning  FailedDeployModel  41m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: cb39206a-f3b4-4a4c-9605-b93edee653aa, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  41m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: 22ed7997-f66d-4510-ae80-bf8b2caa4b3b, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  41m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: 90fa71a2-350c-40b6-88ba-3a83b30b5783, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  41m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: e71e8285-3e98-474e-a6bc-90f8025675f3, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  41m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: acc45145-ddcb-4869-befd-a6cc86639ccf, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  41m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: 5c168d01-8e1c-4cdd-b34d-a616f34f6663, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  41m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: fabd9a85-80ca-4003-8966-0ebc45c5ae48, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  41m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: 296e09eb-67cc-42e5-9b8c-5079d8cf5cd4, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  41m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: 30e65aed-8da4-4203-ba13-4e18669eb952, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  30m (x9 over 41m)  service  (combined from similar events): Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: 41dbd3e7-d26f-423c-9953-5815a5f52ab4, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  19m                service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: 448d8765-3916-46f4-b3ca-b95731e2d106, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.
+  Warning  FailedDeployModel  2m33s              service  Failed deploy model due to operation error Elastic Load Balancing v2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: 0a9da047-2090-4d01-9554-2df371b011ca, OperationNotPermitted: This AWS account currently does not support creating load balancers. For more information, please contact AWS Support.

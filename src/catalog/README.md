@@ -1,5 +1,5 @@
 # AWS Containers Retail Sample - Catalog Service
-
+<!-- GitOps Test: Testing deploy-simple.yml workflow -->
 <!-- GitOps Test: Final workflow validation -->
 
 | Language | Persistence |

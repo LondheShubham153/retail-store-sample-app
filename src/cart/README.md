@@ -1,5 +1,5 @@
 # AWS Containers Retail Sample - Cart Service
-
+<!-- GitOps Test: Testing deploy-simple.yml workflow -->
 <!-- GitOps Test: Multi-service deploy test - Cart -->
 
 | Language | Persistence     |
@@ -66,3 +66,4 @@ To clean up:
 ```
 docker compose down
 ```
+ 

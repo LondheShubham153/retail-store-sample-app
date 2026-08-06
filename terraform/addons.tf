@@ -17,8 +17,7 @@ module "eks_addons" {
   # =============================================================================
   enable_cert_manager = true
   cert_manager = {
-    most_recent = true
-    namespace   = "cert-manager"
+    namespace = "cert-manager"
   }
 
   # =============================================================================
@@ -26,10 +25,10 @@ module "eks_addons" {
   # =============================================================================
   enable_ingress_nginx = true
   ingress_nginx = {
-    most_recent = true
-    namespace   = "ingress-nginx"
-    
-    # Basic configuration
+    namespace = "ingress-nginx"
+
+    # Basic + AWS Load Balancer annotations combined into a single set block
+    # (set_sensitive was removed in Helm provider v3)
     set = [
       {
         name  = "controller.service.type"
@@ -54,11 +53,7 @@ module "eks_addons" {
       {
         name  = "controller.resources.limits.memory"
         value = "256Mi"
-      }
-    ]
-    
-    # AWS Load Balancer specific annotations
-    set_sensitive = [
+      },
       {
         name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-scheme"
         value = "internet-facing"
